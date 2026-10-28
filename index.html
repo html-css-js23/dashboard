@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Site Status</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #16181d; --muted: #6b7280; --line: #e5e7eb;
+    --up: #16a34a; --down: #dc2626; --unknown: #9ca3af; --empty: #e5e7eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115; --card: #171a21; --text: #e8eaed; --muted: #9aa0aa; --line: #262a33;
+      --up: #22c55e; --down: #ef4444; --unknown: #6b7280; --empty: #262a33;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+  .banner { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-radius: 10px;
+    background: var(--card); border: 1px solid var(--line); margin-bottom: 16px; font-weight: 600; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--unknown); flex: none; }
+  .up .dot, .dot.up { background: var(--up); }
+  .down .dot, .dot.down { background: var(--down); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px; margin-bottom: 12px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .name { font-weight: 600; text-decoration: none; color: inherit; }
+  .name:hover { text-decoration: underline; }
+  .pill { margin-left: auto; font-size: 13px; font-weight: 600; padding: 2px 10px; border-radius: 999px;
+    border: 1px solid currentColor; }
+  .pill.up { color: var(--up); } .pill.down { color: var(--down); } .pill.unknown { color: var(--unknown); }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 6px; display: flex; gap: 16px; flex-wrap: wrap; }
+  .bars { display: flex; gap: 2px; height: 28px; margin-top: 12px; }
+  .bars span { flex: 1; border-radius: 2px; background: var(--empty); min-width: 2px; }
+  .bars span.up { background: var(--up); } .bars span.down { background: var(--down); }
+  .legend { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-top: 4px; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Site Status</h1>
+  <p class="sub" id="checked">Loading…</p>
+  <div class="banner" id="banner"><span class="dot"></span><span>Checking…</span></div>
+  <div id="sites"></div>
+  <footer>Checked every 10 minutes by GitHub Actions. "From your browser" is a live check made when you open this page.</footer>
+</main>
+<script>
+const BARS = 60;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function ago(iso) {
+  const s = Math.round((Date.now() - new Date(iso)) / 1000);
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} days ago`;
+}
+
+// no-cors fetch: an opaque response means the server answered; a network error means it didn't.
+async function browserPing(url) {
+  const start = performance.now();
+  try {
+    await fetch(url, { mode: "no-cors", cache: "no-store", signal: AbortSignal.timeout(10000) });
+    return { up: true, ms: Math.round(performance.now() - start) };
+  } catch { return { up: false }; }
+}
+
+async function load() {
+  const bust = `?t=${Date.now()}`;
+  const [sites, status, history] = await Promise.all([
+    fetch("sites.json" + bust).then((r) => r.json()),
+    fetch("data/status.json" + bust).then((r) => r.json()).catch(() => ({ sites: [] })),
+    fetch("data/history.json" + bust).then((r) => r.json()).catch(() => []),
+  ]);
+
+  $("checked").textContent = status.checked
+    ? `Last server check ${ago(status.checked)} · ${new Date(status.checked).toLocaleString()}`
+    : "No server checks yet. The first one runs within 10 minutes.";
+
+  const recent = history.slice(-BARS);
+  $("sites").innerHTML = sites.map((site, i) => {
+    const s = status.sites.find((x) => x.url === site.url);
+    const state = s ? (s.up ? "up" : "down") : "unknown";
+    const label = { up: "Up", down: "Down", unknown: "Unknown" }[state];
+    const runs = history.filter((h) => site.url in h.r);
+    const upCount = runs.filter((h) => h.r[site.url] >= 0).length;
+    const uptime = runs.length ? `${((upCount / runs.length) * 100).toFixed(1)}% uptime` : "";
+    const bars = Array.from({ length: BARS }, (_, k) => {
+      const h = recent[k - (BARS - recent.length)];
+      if (!h || !(site.url in h.r)) return "<span></span>";
+      const v = h.r[site.url];
+      const tip = `${new Date(h.t).toLocaleString()} · ${v >= 0 ? `up, ${v} ms` : "down"}`;
+      return `<span class="${v >= 0 ? "up" : "down"}" title="${esc(tip)}"></span>`;
+    }).join("");
+    const detail = s ? (s.up ? `HTTP ${s.code} · ${s.ms} ms` : (s.code ? `HTTP ${s.code}` : esc(s.error || "No response"))) : "";
+    return `<div class="card ${state}">
+      <div class="row"><span class="dot"></span>
+        <a class="name" href="${esc(site.url)}" target="_blank" rel="noopener">${esc(site.name || site.url)}</a>
+        <span class="pill ${state}">${label}</span></div>
+      <div class="meta"><span>${detail}</span><span>${uptime}</span><span id="ping-${i}">From your browser: checking…</span></div>
+      <div class="bars">${bars}</div>
+      <div class="legend"><span>${recent.length ? ago(recent[0].t) : ""}</span><span>now</span></div>
+    </div>`;
+  }).join("");
+
+  const known = status.sites.filter((s) => sites.some((x) => x.url === s.url));
+  const down = known.filter((s) => !s.up).length;
+  const banner = $("banner");
+  banner.className = "banner " + (!known.length ? "" : down ? "down" : "up");
+  banner.lastElementChild.textContent = !known.length ? "Waiting for the first check"
+    : down ? `${down} of ${known.length} site${known.length > 1 ? "s" : ""} down` : "All sites are up";
+
+  sites.forEach(async (site, i) => {
+    const p = await browserPing(site.url);
+    $(`ping-${i}`).textContent = `From your browser: ${p.up ? `reachable (${p.ms} ms)` : "unreachable"}`;
+  });
+}
+
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>
