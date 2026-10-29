@@ -1,0 +1,13 @@
+{
+  "checked": "2026-10-29T00:13:26.839Z",
+  "sites": [
+    {
+      "name": "arblxcmp.site",
+      "url": "https://arblxcmp.site",
+      "up": false,
+      "code": null,
+      "ms": null,
+      "error": "UND_ERR_CONNECT_TIMEOUT"
+    }
+  ]
+}
