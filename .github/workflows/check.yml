@@ -1,15 +1,16 @@
 name: Check sites
 
+# GitHub throttles cron schedules on small repos, so instead of relying on them
+# one run stays alive for ~5h50m and checks every 5 minutes, then starts the next
+# run itself. The hourly cron is only a backup in case the chain ever breaks.
 on:
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths: [sites.json]
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: check
@@ -18,17 +19,39 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 358
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node check.mjs
-      - name: Commit results
+      - name: Prepare status branch
         run: |
-          git config user.name "status-bot"
-          git config user.email "status-bot@users.noreply.github.com"
-          git add data
-          git diff --cached --quiet || git commit -m "Update status [skip ci]"
-          git pull --rebase origin main
-          git push
+          git config --global user.name "status-bot"
+          git config --global user.email "status-bot@users.noreply.github.com"
+          if git ls-remote --exit-code origin status >/dev/null; then
+            git worktree add out origin/status -B status
+          else
+            git worktree add --orphan -b status out
+          fi
+      - name: Check every 5 minutes
+        run: |
+          end=$((SECONDS + 350 * 60))
+          while [ $SECONDS -lt $end ]; do
+            # Pick up edits to sites.json without waiting for a new run.
+            git fetch -q origin main && git show origin/main:sites.json > sites.json || true
+            OUT_DIR=out/data node check.mjs || true
+            git -C out add data
+            if ! git -C out diff --cached --quiet; then
+              git -C out commit -qm "Update status"
+              git -C out push -q origin status || echo "push failed, will retry next round"
+            fi
+            sleep 300
+          done
+      - name: Start the next run
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run check.yml --ref main

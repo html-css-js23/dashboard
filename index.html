@@ -48,10 +48,14 @@
   <p class="sub" id="checked">Loading…</p>
   <div class="banner" id="banner"><span class="dot"></span><span>Checking…</span></div>
   <div id="sites"></div>
-  <footer>Checked every 10 minutes by GitHub Actions. "From your browser" is a live check made when you open this page.</footer>
+  <footer>Checked every 5 minutes by GitHub Actions. "From your browser" is a live check from your device, repeated every 30 seconds.</footer>
 </main>
 <script>
 const BARS = 60;
+// Results live on the "status" branch so updates don't wait for a Pages rebuild.
+const owner = location.hostname.endsWith(".github.io") ? location.hostname.split(".")[0] : "html-css-js23";
+const repo = location.hostname.endsWith(".github.io") ? location.pathname.split("/")[1] || "dashboard" : "dashboard";
+const DATA = `https://raw.githubusercontent.com/${owner}/${repo}/status/data/`;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -76,13 +80,14 @@ async function load() {
   const bust = `?t=${Date.now()}`;
   const [sites, status, history] = await Promise.all([
     fetch("sites.json" + bust).then((r) => r.json()),
-    fetch("data/status.json" + bust).then((r) => r.json()).catch(() => ({ sites: [] })),
-    fetch("data/history.json" + bust).then((r) => r.json()).catch(() => []),
+    fetch(DATA + "status.json" + bust).then((r) => r.json()).catch(() => ({ sites: [] })),
+    fetch(DATA + "history.json" + bust).then((r) => r.json()).catch(() => []),
   ]);
 
+  sitesList = sites;
   $("checked").textContent = status.checked
     ? `Last server check ${ago(status.checked)} · ${new Date(status.checked).toLocaleString()}`
-    : "No server checks yet. The first one runs within 10 minutes.";
+    : "No server checks yet. The first one runs within a few minutes.";
 
   const recent = history.slice(-BARS);
   $("sites").innerHTML = sites.map((site, i) => {
@@ -117,14 +122,21 @@ async function load() {
   banner.lastElementChild.textContent = !known.length ? "Waiting for the first check"
     : down ? `${down} of ${known.length} site${known.length > 1 ? "s" : ""} down` : "All sites are up";
 
-  sites.forEach(async (site, i) => {
+  pingAll();
+}
+
+let sitesList = [];
+function pingAll() {
+  sitesList.forEach(async (site, i) => {
     const p = await browserPing(site.url);
-    $(`ping-${i}`).textContent = `From your browser: ${p.up ? `reachable (${p.ms} ms)` : "unreachable"}`;
+    const el = $(`ping-${i}`);
+    if (el) el.textContent = `From your browser: ${p.up ? `reachable (${p.ms} ms)` : "unreachable"} · ${new Date().toLocaleTimeString()}`;
   });
 }
 
 load();
 setInterval(load, 60000);
+setInterval(pingAll, 30000);
 </script>
 </body>
 </html>

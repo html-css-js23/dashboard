@@ -1,7 +1,8 @@
-// Checks every site in sites.json and writes data/status.json + data/history.json.
-import { readFile, writeFile } from "node:fs/promises";
+// Checks every site in sites.json and writes status.json + history.json into OUT_DIR.
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 
-const MAX_HISTORY = 288; // ~2 days at 10-minute intervals
+const OUT = process.env.OUT_DIR || "data";
+const MAX_HISTORY = 288; // 24 hours at 5-minute intervals
 const sites = JSON.parse(await readFile("sites.json", "utf8"));
 
 async function check(site) {
@@ -20,10 +21,11 @@ async function check(site) {
 
 const checked = new Date().toISOString();
 const results = await Promise.all(sites.map(check));
-await writeFile("data/status.json", JSON.stringify({ checked, sites: results }, null, 2) + "\n");
+await mkdir(OUT, { recursive: true });
+await writeFile(`${OUT}/status.json`, JSON.stringify({ checked, sites: results }, null, 2) + "\n");
 
-const history = JSON.parse(await readFile("data/history.json", "utf8"));
+const history = JSON.parse(await readFile(`${OUT}/history.json`, "utf8").catch(() => "[]"));
 history.push({ t: checked, r: Object.fromEntries(results.map((s) => [s.url, s.up ? s.ms : -1])) });
-await writeFile("data/history.json", JSON.stringify(history.slice(-MAX_HISTORY)) + "\n");
+await writeFile(`${OUT}/history.json`, JSON.stringify(history.slice(-MAX_HISTORY)) + "\n");
 
 for (const s of results) console.log(`${s.up ? "UP  " : "DOWN"} ${s.url} ${s.code ?? s.error} ${s.ms ?? ""}`);
