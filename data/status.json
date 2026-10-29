@@ -1,13 +1,12 @@
 {
-  "checked": "2026-10-29T02:43:06.046Z",
+  "checked": "2026-10-29T02:48:17.984Z",
   "sites": [
     {
       "name": "arblxcmp.site",
       "url": "https://arblxcmp.site",
-      "up": false,
-      "code": null,
-      "ms": null,
-      "error": "UND_ERR_CONNECT_TIMEOUT"
+      "up": true,
+      "code": 200,
+      "ms": 525
     }
   ]
 }
