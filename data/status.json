@@ -1,12 +1,12 @@
 {
-  "checked": "2026-11-27T21:16:55.433Z",
+  "checked": "2026-11-27T21:21:56.730Z",
   "sites": [
     {
       "name": "arblxcmp.site",
       "url": "https://arblxcmp.site",
       "up": true,
       "code": 200,
-      "ms": 74
+      "ms": 81
     }
   ]
 }
